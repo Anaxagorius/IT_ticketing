@@ -58,6 +58,10 @@
   font-weight: 700;
 }
 
+.metric-card.compact p {
+  font-size: 1.5rem;
+}
+
 .ticket-form,
 .filters {
   display: grid;

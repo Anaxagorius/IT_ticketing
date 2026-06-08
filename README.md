@@ -22,6 +22,10 @@ A branch-aware IT ticketing web application for Valley Credit Union (Head Office
   - Distribution by priority
 - Ticket filtering by branch, priority, and status
 - Audit entries for creation and status changes
+- Assignment and priority update workflow with event tracking
+- Notification and escalation configuration APIs (`/api/admin/*`)
+- SLA warning/breach monitoring with escalation stages
+- Compliance reporting APIs (`/api/compliance/summary`, `/api/compliance/export`)
 - Valley CU branding-inspired navy + gold UI styling
 
 ## Repository Structure
@@ -78,6 +82,6 @@ npm run build
 ## Next Recommended Steps
 
 - Add Active Directory / Azure AD authentication and role-based authorization
-- Add email notifications for updates/escalations
-- Add SLA breach alerts and escalation policies
-- Add persistent audit/compliance reporting
+- Configure Teams/Outlook webhook endpoints in backend appsettings
+- Add authentication/authorization for admin and compliance endpoints
+- Add automated tests for SLA monitoring and escalation transitions

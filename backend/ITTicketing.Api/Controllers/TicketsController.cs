@@ -25,21 +25,28 @@ public sealed class TicketsController(TicketStore ticketStore) : ControllerBase
     }
 
     [HttpPost]
-    public ActionResult<Ticket> Create([FromBody] CreateTicketRequest request)
+    public async Task<ActionResult<Ticket>> Create([FromBody] CreateTicketRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Description))
         {
             return ValidationProblem("Title and description are required.");
         }
 
-        var created = ticketStore.Create(request);
+        var created = await ticketStore.CreateAsync(request, cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
     }
 
     [HttpPut("{id:guid}/status")]
-    public ActionResult<Ticket> UpdateStatus(Guid id, [FromBody] UpdateTicketStatusRequest request)
+    public async Task<ActionResult<Ticket>> UpdateStatus(Guid id, [FromBody] UpdateTicketStatusRequest request, CancellationToken cancellationToken)
     {
-        var updated = ticketStore.UpdateStatus(id, request);
+        var updated = await ticketStore.UpdateStatusAsync(id, request, cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
+    [HttpPut("{id:guid}/details")]
+    public async Task<ActionResult<Ticket>> UpdateDetails(Guid id, [FromBody] UpdateTicketDetailsRequest request, CancellationToken cancellationToken)
+    {
+        var updated = await ticketStore.UpdateDetailsAsync(id, request, cancellationToken);
         return updated is null ? NotFound() : Ok(updated);
     }
 

@@ -36,6 +36,7 @@ public sealed class Ticket
     public TicketPriority Priority { get; set; }
     public TicketStatus Status { get; set; } = TicketStatus.New;
     public string SubmittedBy { get; set; } = string.Empty;
+    public string? AssignedTo { get; set; }
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset DueBy { get; set; }
@@ -61,6 +62,13 @@ public sealed class CreateTicketRequest
 public sealed class UpdateTicketStatusRequest
 {
     public TicketStatus Status { get; init; }
+    public string UpdatedBy { get; init; } = string.Empty;
+}
+
+public sealed class UpdateTicketDetailsRequest
+{
+    public TicketPriority? Priority { get; init; }
+    public string? AssignedTo { get; init; }
     public string UpdatedBy { get; init; } = string.Empty;
 }
 
