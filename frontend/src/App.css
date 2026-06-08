@@ -1,0 +1,134 @@
+.app-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.app-header {
+  background: #05254e;
+  color: #f8fafc;
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+}
+
+.app-header h1 {
+  margin: 0;
+  color: #f3c13a;
+}
+
+.app-header p {
+  margin-top: 0.5rem;
+}
+
+.metrics-grid,
+.content-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.metrics-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.content-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.panel,
+.metric-card {
+  background: #ffffff;
+  border: 1px solid #d4dbe8;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.metric-card h2,
+.panel h2,
+.panel h3 {
+  margin-top: 0;
+  color: #05254e;
+}
+
+.metric-card p {
+  margin: 0;
+  font-size: 2rem;
+  color: #a87800;
+  font-weight: 700;
+}
+
+.ticket-form,
+.filters {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ticket-form label,
+.filters label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  padding: 0.5rem;
+  border-radius: 0.4rem;
+  border: 1px solid #b9c3d7;
+}
+
+textarea {
+  min-height: 6rem;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid #7f5f00;
+  background: #d6a40a;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+button:hover {
+  background: #c69500;
+}
+
+.inline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.6rem;
+  border-bottom: 1px solid #e2e8f0;
+  vertical-align: top;
+  text-align: left;
+}
+
+td p {
+  margin: 0.35rem 0 0;
+  color: #475569;
+}
+
+.error {
+  color: #b91c1c;
+  font-weight: 700;
+}

@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/backend/">
+    <Project Path="backend/ITTicketing.Api/ITTicketing.Api.csproj" />
+  </Folder>
+</Solution>

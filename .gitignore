@@ -1,0 +1,16 @@
+# .NET
+**/bin/
+**/obj/
+
+# Node
+**/node_modules/
+frontend/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
