@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using ITTicketing.Api.Data;
 using ITTicketing.Api.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,11 +22,25 @@ builder.Services.AddDbContext<TicketDbContext>(options => options.UseSqlServer(c
 builder.Services.AddScoped<TicketStore>();
 builder.Services.AddScoped<TicketEventOrchestrator>();
 builder.Services.AddScoped<EscalationEngine>();
+builder.Services.AddScoped<SlaEvaluator>();
 builder.Services.AddSingleton<INotificationChannelSender, NotificationChannelSender>();
 builder.Services.AddHttpClient(nameof(NotificationChannelSender));
 builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection(NotificationOptions.SectionName));
 builder.Services.Configure<SlaMonitoringOptions>(builder.Configuration.GetSection(SlaMonitoringOptions.SectionName));
+builder.Services.Configure<ApiKeyAuthOptions>(builder.Configuration.GetSection(ApiKeyAuthOptions.SectionName));
 builder.Services.AddHostedService<SlaMonitoringService>();
+
+builder.Services
+    .AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)
+    .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationHandler.SchemeName, _ => { });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy =>
+        policy.RequireAuthenticatedUser().RequireRole(ApiKeyAuthenticationHandler.AdminRole));
+    options.AddPolicy("Compliance", policy =>
+        policy.RequireAuthenticatedUser().RequireRole(ApiKeyAuthenticationHandler.ComplianceRole));
+});
 
 builder.Services.AddCors(options =>
 {
@@ -52,7 +67,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("frontend");
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+

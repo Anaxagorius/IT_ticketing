@@ -1,6 +1,7 @@
 using System.Text;
 using ITTicketing.Api.Data;
 using ITTicketing.Api.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +9,7 @@ namespace ITTicketing.Api.Controllers;
 
 [ApiController]
 [Route("api/compliance")]
+[Authorize(Policy = "Compliance")]
 public sealed class ComplianceController(TicketDbContext dbContext) : ControllerBase
 {
     [HttpGet("summary")]
