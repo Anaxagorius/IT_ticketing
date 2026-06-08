@@ -32,8 +32,7 @@ public sealed class TicketStore(TicketDbContext dbContext)
         return query
             .OrderByDescending(ticket => ticket.CreatedAt)
             .ToList()
-            .Select(ToModel)
-            .ToList();
+            .Select(ToModel);
     }
 
     public Ticket? GetTicket(Guid id)
@@ -104,8 +103,11 @@ public sealed class TicketStore(TicketDbContext dbContext)
 
     public TicketSummaryResponse GetSummary()
     {
-        var tickets = dbContext.Tickets.AsNoTracking();
+        var tickets = dbContext.Tickets
+            .AsNoTracking()
+            .ToList();
         var openStatuses = new[] { TicketStatus.New, TicketStatus.InProgress };
+        var resolvedStatuses = new[] { TicketStatus.Resolved, TicketStatus.Closed };
 
         var byBranch = tickets
             .GroupBy(ticket => ticket.Branch)
@@ -122,7 +124,7 @@ public sealed class TicketStore(TicketDbContext dbContext)
         return new TicketSummaryResponse
         {
             TotalOpen = tickets.Count(ticket => openStatuses.Contains(ticket.Status)),
-            TotalResolved = tickets.Count(ticket => ticket.Status == TicketStatus.Resolved || ticket.Status == TicketStatus.Closed),
+            TotalResolved = tickets.Count(ticket => resolvedStatuses.Contains(ticket.Status)),
             ByBranch = byBranch,
             ByPriority = byPriority
         };

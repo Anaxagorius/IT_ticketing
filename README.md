@@ -34,10 +34,10 @@ A branch-aware IT ticketing web application for Valley Credit Union (Head Office
 
 ### 0) Start SQL Server
 
-Ensure SQL Server is running and update the `ConnectionStrings:DefaultConnection` value in:
+Ensure SQL Server is running and update the `ConnectionStrings:DefaultConnection` value in (for SQL authentication, replace `Integrated Security=True` with explicit user/password settings):
 
-- `/tmp/workspace/Anaxagorius/IT_ticketing/backend/ITTicketing.Api/appsettings.json`
-- `/tmp/workspace/Anaxagorius/IT_ticketing/backend/ITTicketing.Api/appsettings.Development.json`
+- `backend/ITTicketing.Api/appsettings.json`
+- `backend/ITTicketing.Api/appsettings.Development.json`
 
 ### 1) Start API
 
