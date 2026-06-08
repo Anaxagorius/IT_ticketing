@@ -1,6 +1,7 @@
 using ITTicketing.Api.Data;
 using ITTicketing.Api.Data.Entities;
 using ITTicketing.Api.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +9,7 @@ namespace ITTicketing.Api.Controllers;
 
 [ApiController]
 [Route("api/admin")]
+[Authorize(Policy = "Admin")]
 public sealed class AdminController(TicketDbContext dbContext) : ControllerBase
 {
     [HttpGet("recipients")]
