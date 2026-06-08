@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ITTicketing.Api.Services;
 
-public sealed class TicketStore(TicketDbContext dbContext)
+public sealed class TicketStore(TicketDbContext dbContext, TicketEventOrchestrator eventOrchestrator)
 {
     public IEnumerable<Ticket> GetTickets(BranchLocation? branch, TicketPriority? priority, TicketStatus? status)
     {
@@ -45,7 +45,7 @@ public sealed class TicketStore(TicketDbContext dbContext)
         return ticket is null ? null : ToModel(ticket);
     }
 
-    public Ticket Create(CreateTicketRequest request)
+    public async Task<Ticket> CreateAsync(CreateTicketRequest request, CancellationToken cancellationToken = default)
     {
         var normalizedSubmitter = string.IsNullOrWhiteSpace(request.SubmittedBy) ? "Employee" : request.SubmittedBy.Trim();
         var now = DateTimeOffset.UtcNow;
@@ -70,16 +70,57 @@ public sealed class TicketStore(TicketDbContext dbContext)
         };
 
         dbContext.Tickets.Add(ticket);
-        dbContext.SaveChanges();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await eventOrchestrator.RecordTicketEventAsync(
+            ticket,
+            TicketEventType.TicketCreated,
+            normalizedSubmitter,
+            new { ticket.Title, ticket.Priority, ticket.Branch, ticket.DueBy },
+            cancellationToken);
 
         return ToModel(ticket);
     }
 
-    public Ticket? UpdateStatus(Guid id, UpdateTicketStatusRequest request)
+    public async Task<Ticket?> UpdateStatusAsync(Guid id, UpdateTicketStatusRequest request, CancellationToken cancellationToken = default)
     {
-        var ticket = dbContext.Tickets
+        var ticket = await dbContext.Tickets
             .Include(item => item.AuditLog)
-            .FirstOrDefault(item => item.Id == id);
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+
+        if (ticket is null)
+        {
+            return null;
+        }
+
+        var previousStatus = ticket.Status;
+        var updatedBy = string.IsNullOrWhiteSpace(request.UpdatedBy) ? "IT Staff" : request.UpdatedBy.Trim();
+        var now = DateTimeOffset.UtcNow;
+
+        ticket.Status = request.Status;
+        ticket.UpdatedAt = now;
+        ticket.AuditLog.Add(new TicketAuditEntryEntity
+        {
+            Action = $"Status updated from {previousStatus} to {request.Status}",
+            PerformedBy = updatedBy,
+            Timestamp = now
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await eventOrchestrator.RecordTicketEventAsync(
+            ticket,
+            TicketEventType.StatusChanged,
+            updatedBy,
+            new { previousStatus, currentStatus = ticket.Status },
+            cancellationToken);
+
+        return ToModel(ticket);
+    }
+
+    public async Task<Ticket?> UpdateDetailsAsync(Guid id, UpdateTicketDetailsRequest request, CancellationToken cancellationToken = default)
+    {
+        var ticket = await dbContext.Tickets
+            .Include(item => item.AuditLog)
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
 
         if (ticket is null)
         {
@@ -87,17 +128,59 @@ public sealed class TicketStore(TicketDbContext dbContext)
         }
 
         var updatedBy = string.IsNullOrWhiteSpace(request.UpdatedBy) ? "IT Staff" : request.UpdatedBy.Trim();
-        ticket.Status = request.Status;
-        ticket.UpdatedAt = DateTimeOffset.UtcNow;
-        ticket.AuditLog.Add(new TicketAuditEntryEntity
+        var now = DateTimeOffset.UtcNow;
+        var hasChanges = false;
+
+        if (request.Priority.HasValue && request.Priority.Value != ticket.Priority)
         {
-            Action = $"Status updated to {request.Status}",
-            PerformedBy = updatedBy,
-            Timestamp = ticket.UpdatedAt
-        });
+            var previousPriority = ticket.Priority;
+            ticket.Priority = request.Priority.Value;
+            ticket.DueBy = now.Add(GetSlaWindow(ticket.Priority));
+            ticket.AuditLog.Add(new TicketAuditEntryEntity
+            {
+                Action = $"Priority updated from {previousPriority} to {ticket.Priority}",
+                PerformedBy = updatedBy,
+                Timestamp = now
+            });
+            await eventOrchestrator.RecordTicketEventAsync(
+                ticket,
+                TicketEventType.PriorityChanged,
+                updatedBy,
+                new { previousPriority, currentPriority = ticket.Priority, ticket.DueBy },
+                cancellationToken);
+            hasChanges = true;
+        }
 
-        dbContext.SaveChanges();
+        if (request.AssignedTo != null)
+        {
+            var normalizedAssignedTo = string.IsNullOrWhiteSpace(request.AssignedTo) ? null : request.AssignedTo.Trim();
+            if (!string.Equals(ticket.AssignedTo, normalizedAssignedTo, StringComparison.Ordinal))
+            {
+                var previousAssignee = ticket.AssignedTo;
+                ticket.AssignedTo = normalizedAssignedTo;
+                ticket.AuditLog.Add(new TicketAuditEntryEntity
+                {
+                    Action = $"Assignment updated from '{previousAssignee ?? "Unassigned"}' to '{ticket.AssignedTo ?? "Unassigned"}'",
+                    PerformedBy = updatedBy,
+                    Timestamp = now
+                });
+                await eventOrchestrator.RecordTicketEventAsync(
+                    ticket,
+                    TicketEventType.AssignmentChanged,
+                    updatedBy,
+                    new { previousAssignee, currentAssignee = ticket.AssignedTo },
+                    cancellationToken);
+                hasChanges = true;
+            }
+        }
 
+        if (!hasChanges)
+        {
+            return ToModel(ticket);
+        }
+
+        ticket.UpdatedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
         return ToModel(ticket);
     }
 
@@ -112,13 +195,11 @@ public sealed class TicketStore(TicketDbContext dbContext)
         var byBranch = tickets
             .GroupBy(ticket => ticket.Branch)
             .Select(group => new { group.Key, Count = group.Count() })
-            .ToList()
             .ToDictionary(item => item.Key.ToString(), item => item.Count);
 
         var byPriority = tickets
             .GroupBy(ticket => ticket.Priority)
             .Select(group => new { group.Key, Count = group.Count() })
-            .ToList()
             .ToDictionary(item => item.Key.ToString(), item => item.Count);
 
         return new TicketSummaryResponse
@@ -149,6 +230,7 @@ public sealed class TicketStore(TicketDbContext dbContext)
             Priority = ticketEntity.Priority,
             Status = ticketEntity.Status,
             SubmittedBy = ticketEntity.SubmittedBy,
+            AssignedTo = ticketEntity.AssignedTo,
             CreatedAt = ticketEntity.CreatedAt,
             UpdatedAt = ticketEntity.UpdatedAt,
             DueBy = ticketEntity.DueBy,

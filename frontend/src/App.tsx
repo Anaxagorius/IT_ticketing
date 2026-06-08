@@ -22,7 +22,9 @@ type Ticket = {
   priority: TicketPriority
   status: TicketStatus
   submittedBy: string
+  assignedTo?: string | null
   createdAt: string
+  updatedAt: string
   dueBy: string
 }
 
@@ -31,6 +33,16 @@ type TicketSummary = {
   totalResolved: number
   byBranch: Record<string, number>
   byPriority: Record<string, number>
+}
+
+type ComplianceSummary = {
+  totalBreaches: number
+  activeBreaches: number
+  activeEscalations: number
+  totalEscalations: number
+  meanResolutionHours: number
+  notificationSuccessRate: number
+  breachesByPriority: Record<string, number>
 }
 
 const branches: BranchLocation[] = [
@@ -53,6 +65,16 @@ const defaultSummary: TicketSummary = {
   byPriority: {},
 }
 
+const defaultComplianceSummary: ComplianceSummary = {
+  totalBreaches: 0,
+  activeBreaches: 0,
+  activeEscalations: 0,
+  totalEscalations: 0,
+  meanResolutionHours: 0,
+  notificationSuccessRate: 0,
+  breachesByPriority: {},
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -66,6 +88,8 @@ async function parseJson<T>(response: Response): Promise<T> {
 function App() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [summary, setSummary] = useState<TicketSummary>(defaultSummary)
+  const [complianceSummary, setComplianceSummary] =
+    useState<ComplianceSummary>(defaultComplianceSummary)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshTick, setRefreshTick] = useState(0)
@@ -94,19 +118,23 @@ function App() {
 
     const fetchData = async () => {
       try {
-        const [ticketResponse, summaryResponse] = await Promise.all([
-          fetch(`${API_BASE}/api/tickets${queryString}`),
-          fetch(`${API_BASE}/api/tickets/summary`),
-        ])
+        const [ticketResponse, summaryResponse, complianceSummaryResponse] =
+          await Promise.all([
+            fetch(`${API_BASE}/api/tickets${queryString}`),
+            fetch(`${API_BASE}/api/tickets/summary`),
+            fetch(`${API_BASE}/api/compliance/summary`),
+          ])
 
-        const [ticketData, summaryData] = await Promise.all([
+        const [ticketData, summaryData, complianceData] = await Promise.all([
           parseJson<Ticket[]>(ticketResponse),
           parseJson<TicketSummary>(summaryResponse),
+          parseJson<ComplianceSummary>(complianceSummaryResponse),
         ])
 
         if (!isCancelled) {
           setTickets(ticketData)
           setSummary(summaryData)
+          setComplianceSummary(complianceData)
         }
       } catch (requestError) {
         if (!isCancelled) {
@@ -189,6 +217,31 @@ function App() {
     }
   }
 
+  async function updateTicketDetails(ticketId: string, details: Partial<{ priority: TicketPriority; assignedTo: string | null }>) {
+    setError(null)
+    setIsLoading(true)
+
+    try {
+      const response = await fetch(`${API_BASE}/api/tickets/${ticketId}/details`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...details,
+          updatedBy: 'IT Staff',
+        }),
+      })
+
+      await parseJson<Ticket>(response)
+      setRefreshTick((current) => current + 1)
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error ? requestError.message : 'Unable to update ticket details.',
+      )
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -206,6 +259,29 @@ function App() {
         <article className="metric-card">
           <h2>Resolved / Closed</h2>
           <p>{summary.totalResolved}</p>
+        </article>
+        <article className="metric-card">
+          <h2>Active SLA Breaches</h2>
+          <p>{complianceSummary.activeBreaches}</p>
+        </article>
+        <article className="metric-card">
+          <h2>Active Escalations</h2>
+          <p>{complianceSummary.activeEscalations}</p>
+        </article>
+      </section>
+
+      <section className="metrics-grid secondary-metrics">
+        <article className="metric-card compact">
+          <h2>Total Escalations</h2>
+          <p>{complianceSummary.totalEscalations}</p>
+        </article>
+        <article className="metric-card compact">
+          <h2>Notification Health</h2>
+          <p>{Math.round(complianceSummary.notificationSuccessRate * 100)}%</p>
+        </article>
+        <article className="metric-card compact">
+          <h2>Mean Resolution (hrs)</h2>
+          <p>{complianceSummary.meanResolutionHours}</p>
         </article>
       </section>
 
@@ -323,9 +399,9 @@ function App() {
             ))}
           </ul>
 
-          <h3>By Priority</h3>
+          <h3>Breaches by Priority</h3>
           <ul className="inline-list">
-            {Object.entries(summary.byPriority).map(([name, count]) => (
+            {Object.entries(complianceSummary.breachesByPriority).map(([name, count]) => (
               <li key={name}>
                 {name}: <strong>{count}</strong>
               </li>
@@ -349,6 +425,7 @@ function App() {
                   <th>Branch</th>
                   <th>Priority</th>
                   <th>Status</th>
+                  <th>Assigned To</th>
                   <th>Submitted By</th>
                   <th>Due By</th>
                 </tr>
@@ -361,7 +438,22 @@ function App() {
                       <p>{ticket.description}</p>
                     </td>
                     <td>{ticket.branch}</td>
-                    <td>{ticket.priority}</td>
+                    <td>
+                      <select
+                        value={ticket.priority}
+                        onChange={(event) =>
+                          void updateTicketDetails(ticket.id, {
+                            priority: event.target.value as TicketPriority,
+                          })
+                        }
+                      >
+                        {priorities.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td>
                       <select
                         value={ticket.status}
@@ -375,6 +467,17 @@ function App() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td>
+                      <input
+                        defaultValue={ticket.assignedTo ?? ''}
+                        placeholder="Unassigned"
+                        onBlur={(event) =>
+                          void updateTicketDetails(ticket.id, {
+                            assignedTo: event.target.value || null,
+                          })
+                        }
+                      />
                     </td>
                     <td>{ticket.submittedBy}</td>
                     <td>{new Date(ticket.dueBy).toLocaleString()}</td>

@@ -19,6 +19,14 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<TicketDbContext>(options => options.UseSqlServer(connectionString));
 builder.Services.AddScoped<TicketStore>();
+builder.Services.AddScoped<TicketEventOrchestrator>();
+builder.Services.AddScoped<EscalationEngine>();
+builder.Services.AddSingleton<INotificationChannelSender, NotificationChannelSender>();
+builder.Services.AddHttpClient(nameof(NotificationChannelSender));
+builder.Services.Configure<NotificationOptions>(builder.Configuration.GetSection(NotificationOptions.SectionName));
+builder.Services.Configure<SlaMonitoringOptions>(builder.Configuration.GetSection(SlaMonitoringOptions.SectionName));
+builder.Services.AddHostedService<SlaMonitoringService>();
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("frontend", policy =>
