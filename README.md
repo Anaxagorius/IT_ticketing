@@ -4,7 +4,7 @@ A branch-aware IT ticketing web application for Valley Credit Union (Head Office
 
 - **Frontend:** React + TypeScript (Vite)
 - **Backend:** ASP.NET Core Web API
-- **Data Store (current implementation):** In-memory ticket store (can be swapped for SQL Server)
+- **Data Store:** SQL Server with Entity Framework Core migrations
 
 ## Implemented Features
 
@@ -32,6 +32,13 @@ A branch-aware IT ticketing web application for Valley Credit Union (Head Office
 
 ## Run Locally
 
+### 0) Start SQL Server
+
+Ensure SQL Server is running and update the `ConnectionStrings:DefaultConnection` value in (for SQL authentication, replace `Integrated Security=True` with explicit user/password settings):
+
+- `backend/ITTicketing.Api/appsettings.json`
+- `backend/ITTicketing.Api/appsettings.Development.json`
+
 ### 1) Start API
 
 ```bash
@@ -39,7 +46,7 @@ cd /tmp/workspace/Anaxagorius/IT_ticketing/backend/ITTicketing.Api
 dotnet run
 ```
 
-API runs at `http://localhost:5101`.
+API runs at `http://localhost:5101` and applies EF Core migrations automatically on startup.
 
 ### 2) Start Frontend
 
@@ -70,7 +77,6 @@ npm run build
 
 ## Next Recommended Steps
 
-- Replace in-memory store with SQL Server + EF Core migrations
 - Add Active Directory / Azure AD authentication and role-based authorization
 - Add email notifications for updates/escalations
 - Add SLA breach alerts and escalation policies

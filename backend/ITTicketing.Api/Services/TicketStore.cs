@@ -1,33 +1,48 @@
+using ITTicketing.Api.Data;
+using ITTicketing.Api.Data.Entities;
 using ITTicketing.Api.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace ITTicketing.Api.Services;
 
-public sealed class TicketStore
+public sealed class TicketStore(TicketDbContext dbContext)
 {
-    private readonly List<Ticket> _tickets = [];
-    private readonly object _sync = new();
-
     public IEnumerable<Ticket> GetTickets(BranchLocation? branch, TicketPriority? priority, TicketStatus? status)
     {
-        lock (_sync)
+        var query = dbContext.Tickets
+            .AsNoTracking()
+            .Include(ticket => ticket.AuditLog)
+            .AsQueryable();
+
+        if (branch.HasValue)
         {
-            return _tickets
-                .Where(t => !branch.HasValue || t.Branch == branch.Value)
-                .Where(t => !priority.HasValue || t.Priority == priority.Value)
-                .Where(t => !status.HasValue || t.Status == status.Value)
-                .OrderByDescending(t => t.CreatedAt)
-                .Select(Clone)
-                .ToList();
+            query = query.Where(ticket => ticket.Branch == branch.Value);
         }
+
+        if (priority.HasValue)
+        {
+            query = query.Where(ticket => ticket.Priority == priority.Value);
+        }
+
+        if (status.HasValue)
+        {
+            query = query.Where(ticket => ticket.Status == status.Value);
+        }
+
+        return query
+            .OrderByDescending(ticket => ticket.CreatedAt)
+            .ToList()
+            .Select(ToModel);
     }
 
     public Ticket? GetTicket(Guid id)
     {
-        lock (_sync)
-        {
-            var ticket = _tickets.FirstOrDefault(t => t.Id == id);
-            return ticket is null ? null : Clone(ticket);
-        }
+        var ticket = dbContext.Tickets
+            .AsNoTracking()
+            .Include(item => item.AuditLog)
+            .FirstOrDefault(item => item.Id == id);
+
+        return ticket is null ? null : ToModel(ticket);
     }
 
     public Ticket Create(CreateTicketRequest request)
@@ -35,7 +50,7 @@ public sealed class TicketStore
         var normalizedSubmitter = string.IsNullOrWhiteSpace(request.SubmittedBy) ? "Employee" : request.SubmittedBy.Trim();
         var now = DateTimeOffset.UtcNow;
 
-        var ticket = new Ticket
+        var ticket = new TicketEntity
         {
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
@@ -45,7 +60,7 @@ public sealed class TicketStore
             DueBy = now.Add(GetSlaWindow(request.Priority)),
             AuditLog =
             [
-                new TicketAuditEntry
+                new TicketAuditEntryEntity
                 {
                     Action = "Ticket created",
                     PerformedBy = normalizedSubmitter,
@@ -54,55 +69,65 @@ public sealed class TicketStore
             ]
         };
 
-        lock (_sync)
-        {
-            _tickets.Add(ticket);
-        }
+        dbContext.Tickets.Add(ticket);
+        dbContext.SaveChanges();
 
-        return Clone(ticket);
+        return ToModel(ticket);
     }
 
     public Ticket? UpdateStatus(Guid id, UpdateTicketStatusRequest request)
     {
-        lock (_sync)
+        var ticket = dbContext.Tickets
+            .Include(item => item.AuditLog)
+            .FirstOrDefault(item => item.Id == id);
+
+        if (ticket is null)
         {
-            var ticket = _tickets.FirstOrDefault(t => t.Id == id);
-            if (ticket is null)
-            {
-                return null;
-            }
-
-            var updatedBy = string.IsNullOrWhiteSpace(request.UpdatedBy) ? "IT Staff" : request.UpdatedBy.Trim();
-            ticket.Status = request.Status;
-            ticket.UpdatedAt = DateTimeOffset.UtcNow;
-            ticket.AuditLog.Add(new TicketAuditEntry
-            {
-                Action = $"Status updated to {request.Status}",
-                PerformedBy = updatedBy,
-                Timestamp = ticket.UpdatedAt
-            });
-
-            return Clone(ticket);
+            return null;
         }
+
+        var updatedBy = string.IsNullOrWhiteSpace(request.UpdatedBy) ? "IT Staff" : request.UpdatedBy.Trim();
+        ticket.Status = request.Status;
+        ticket.UpdatedAt = DateTimeOffset.UtcNow;
+        ticket.AuditLog.Add(new TicketAuditEntryEntity
+        {
+            Action = $"Status updated to {request.Status}",
+            PerformedBy = updatedBy,
+            Timestamp = ticket.UpdatedAt
+        });
+
+        dbContext.SaveChanges();
+
+        return ToModel(ticket);
     }
 
     public TicketSummaryResponse GetSummary()
     {
-        lock (_sync)
+        var tickets = dbContext.Tickets
+            .AsNoTracking()
+            .ToList();
+        var openStatuses = new[] { TicketStatus.New, TicketStatus.InProgress };
+        var resolvedStatuses = new[] { TicketStatus.Resolved, TicketStatus.Closed };
+
+        var byBranch = tickets
+            .GroupBy(ticket => ticket.Branch)
+            .Select(group => new { group.Key, Count = group.Count() })
+            .ToList()
+            .ToDictionary(item => item.Key.ToString(), item => item.Count);
+
+        var byPriority = tickets
+            .GroupBy(ticket => ticket.Priority)
+            .Select(group => new { group.Key, Count = group.Count() })
+            .ToList()
+            .ToDictionary(item => item.Key.ToString(), item => item.Count);
+
+        return new TicketSummaryResponse
         {
-            var openStatuses = new[] { TicketStatus.New, TicketStatus.InProgress };
-            return new TicketSummaryResponse
-            {
-                TotalOpen = _tickets.Count(t => openStatuses.Contains(t.Status)),
-                TotalResolved = _tickets.Count(t => t.Status is TicketStatus.Resolved or TicketStatus.Closed),
-                ByBranch = _tickets
-                    .GroupBy(t => t.Branch.ToString())
-                    .ToDictionary(group => group.Key, group => group.Count()),
-                ByPriority = _tickets
-                    .GroupBy(t => t.Priority.ToString())
-                    .ToDictionary(group => group.Key, group => group.Count())
-            };
-        }
+            TotalOpen = tickets.Count(ticket => openStatuses.Contains(ticket.Status)),
+            TotalResolved = tickets.Count(ticket => resolvedStatuses.Contains(ticket.Status)),
+            ByBranch = byBranch,
+            ByPriority = byPriority
+        };
     }
 
     private static TimeSpan GetSlaWindow(TicketPriority priority) =>
@@ -114,20 +139,21 @@ public sealed class TicketStore
             _ => TimeSpan.FromHours(48)
         };
 
-    private static Ticket Clone(Ticket ticket) =>
+    private static Ticket ToModel(TicketEntity ticketEntity) =>
         new()
         {
-            Id = ticket.Id,
-            Title = ticket.Title,
-            Description = ticket.Description,
-            Branch = ticket.Branch,
-            Priority = ticket.Priority,
-            Status = ticket.Status,
-            SubmittedBy = ticket.SubmittedBy,
-            CreatedAt = ticket.CreatedAt,
-            UpdatedAt = ticket.UpdatedAt,
-            DueBy = ticket.DueBy,
-            AuditLog = ticket.AuditLog
+            Id = ticketEntity.Id,
+            Title = ticketEntity.Title,
+            Description = ticketEntity.Description,
+            Branch = ticketEntity.Branch,
+            Priority = ticketEntity.Priority,
+            Status = ticketEntity.Status,
+            SubmittedBy = ticketEntity.SubmittedBy,
+            CreatedAt = ticketEntity.CreatedAt,
+            UpdatedAt = ticketEntity.UpdatedAt,
+            DueBy = ticketEntity.DueBy,
+            AuditLog = ticketEntity.AuditLog
+                .OrderBy(entry => entry.Timestamp)
                 .Select(entry => new TicketAuditEntry
                 {
                     Timestamp = entry.Timestamp,
